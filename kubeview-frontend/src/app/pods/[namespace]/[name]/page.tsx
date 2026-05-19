@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, use } from "react";
+import { useCallback, useState, useEffect, use } from "react";
 import { api, Pod } from "@/lib/api";
 import { usePolling } from "@/lib/hooks";
 import StatusBadge from "@/components/StatusBadge";
@@ -17,6 +17,15 @@ export default function PodDetailPage({ params }: { params: Promise<{ namespace:
 
   const fetcher = useCallback(() => api.getPod(namespace, name), [namespace, name]);
   const { data: pod, error, loading, refresh } = usePolling<Pod>(fetcher);
+
+  // Default `selectedContainer` to the first container once the pod loads —
+  // the K8s logs API requires a container name for multi-container pods,
+  // and there's no "all containers" mode in a single call.
+  useEffect(() => {
+    if (pod && pod.containers.length > 0 && !selectedContainer) {
+      setSelectedContainer(pod.containers[0].name);
+    }
+  }, [pod, selectedContainer]);
 
   const fetchLogs = async (container?: string) => {
     setLogsLoading(true);
@@ -58,7 +67,10 @@ export default function PodDetailPage({ params }: { params: Promise<{ namespace:
             key={tab}
             onClick={() => {
               setActiveTab(tab);
-              if (tab === "logs" && !logs) fetchLogs(selectedContainer);
+              if (tab === "logs" && !logs) {
+                const container = selectedContainer || pod?.containers[0]?.name;
+                if (container) fetchLogs(container);
+              }
             }}
             className={`px-4 py-2.5 text-sm font-medium transition-colors border-b-2 -mb-px ${
               activeTab === tab
@@ -180,7 +192,6 @@ export default function PodDetailPage({ params }: { params: Promise<{ namespace:
                   }}
                   className="bg-background border border-border rounded-lg px-3 py-1.5 text-xs focus:outline-none"
                 >
-                  <option value="">All containers</option>
                   {pod.containers.map((c) => (
                     <option key={c.name} value={c.name}>{c.name}</option>
                   ))}
